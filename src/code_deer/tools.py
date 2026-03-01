@@ -6,11 +6,35 @@ from typing import List, Optional, Tuple, Literal
 
 from langchain_core.tools import tool
 
+# Global working directory variable
+# In a more complex app, this might be managed via a ContextVar or dependency injection
+_WORKING_DIRECTORY = Path(".").resolve()
+
+def set_working_directory(path: str):
+    global _WORKING_DIRECTORY
+    _WORKING_DIRECTORY = Path(path).resolve()
+    # Also change the process working directory so relative paths work as expected
+    try:
+        os.chdir(_WORKING_DIRECTORY)
+    except Exception as e:
+        print(f"Error changing directory to {path}: {e}")
+
+def get_working_directory() -> Path:
+    return _WORKING_DIRECTORY
+
+def resolve_path(path: str) -> Path:
+    """Resolve path relative to the working directory."""
+    # If path is absolute, use it directly (but maybe we should restrict it to be within cwd for safety?)
+    # For this tool, we'll allow absolute paths but prioritize relative to cwd.
+    p = Path(path)
+    if p.is_absolute():
+        return p
+    return (get_working_directory() / p).resolve()
 
 @tool
 def bash(command: str) -> str:
     """Run commands in a bash shell.
-    When using this tool, the command is executed in the current working directory.
+    When using this tool, the command is executed in the configured working directory.
     Output will be truncated if it is too long.
     """
     try:
@@ -22,7 +46,8 @@ def bash(command: str) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=120,  # 2 minutes timeout
-            executable="/bin/bash"
+            executable="/bin/bash",
+            cwd=get_working_directory() # Run in the working directory
         )
         
         stdout = process.stdout
@@ -63,7 +88,7 @@ def text_editor(
     - insert: Insert `new_str` after `insert_line`. `insert_line` is 0-indexed (0 to insert at start, n to insert after line n).
     """
     try:
-        file_path = Path(path).expanduser().resolve()
+        file_path = resolve_path(path)
         
         if command == "view":
             if not file_path.exists():
@@ -151,7 +176,7 @@ def text_editor(
 def ls_files(path: str = ".") -> str:
     """List files and directories in the given path (like ls -F)."""
     try:
-        target_path = Path(path).expanduser().resolve()
+        target_path = resolve_path(path)
         if not target_path.exists():
             return f"Error: Path {path} does not exist."
         
@@ -172,7 +197,7 @@ def ls_files(path: str = ".") -> str:
 @tool
 def tree_files(path: str = ".", max_depth: int = 2) -> str:
     """List files in a tree-like structure."""
-    target_path = Path(path).expanduser().resolve()
+    target_path = resolve_path(path)
     if not target_path.exists():
         return f"Error: Path {path} does not exist."
 
@@ -212,16 +237,19 @@ def grep_files(pattern: str, path: str = ".", recursive: bool = True) -> str:
     # But as a standalone tool, let's try to use subprocess grep if on linux/mac.
     
     try:
+        target_path = resolve_path(path)
+        
         cmd = ["grep", "-n"]
         if recursive:
             cmd.append("-r")
-        cmd.extend([pattern, path])
+        cmd.extend([pattern, str(target_path)])
         
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            cwd=get_working_directory()
         )
         if result.returncode == 0:
             return result.stdout

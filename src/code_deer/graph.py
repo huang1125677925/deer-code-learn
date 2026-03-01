@@ -122,7 +122,9 @@ def build_graph(extra_tools=None):
                                     # File changed, read it back
                                     if path:
                                         try:
-                                            content = pathlib.Path(path).expanduser().resolve().read_text(encoding="utf-8")
+                                            # Import resolve_path from tools to handle relative paths correctly
+                                            from .tools import resolve_path
+                                            content = resolve_path(path).read_text(encoding="utf-8")
                                             return {"editor_text": content}
                                         except Exception as e:
                                             return {"editor_text": f"Error reading file: {e}"}

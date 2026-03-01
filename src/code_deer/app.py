@@ -80,6 +80,11 @@ class CodeDeerApp(App):
         self.state = {"messages": [], "editor_text": "", "plan": ""}
         self.current_markdown = None
         self.terminal_content = ""
+        
+        # Display current working directory in terminal
+        from .tools import get_working_directory
+        cwd = get_working_directory()
+        self.terminal_content = f"Working Directory: {cwd}\n"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -92,7 +97,10 @@ class CodeDeerApp(App):
                         with TabPane("Todo"):
                             yield Markdown(id="plan-view-content")
                         with TabPane("Terminal"):
-                            yield Markdown(id="terminal-view")
+                            # 增加一个输入框用于执行 bash 命令
+                            with Vertical():
+                                yield Markdown(f"```bash\n{self.terminal_content}\n```", id="terminal-view")
+                                yield Input(placeholder="Run bash command...", id="terminal-input")
             yield Input(id="input")
         yield Footer()
 
@@ -107,12 +115,19 @@ class CodeDeerApp(App):
         self.exit()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        input_id = event.input.id
         value = event.value
         event.input.value = ""
 
         if not value.strip():
             return
 
+        # 如果是终端输入框的事件
+        if input_id == "terminal-input":
+            self.run_terminal_command(value)
+            return
+
+        # 默认是聊天输入框
         chat_container = self.query_one("#chat-container", VerticalScroll)
         chat_container.mount(Markdown(f"**You**: {value}", classes="user-message"))
         chat_container.scroll_end(animate=False)
@@ -123,6 +138,28 @@ class CodeDeerApp(App):
             return
 
         self.process_chat(value)
+
+    @work
+    async def run_terminal_command(self, command: str) -> None:
+        """Run a bash command and update terminal view."""
+        from .tools import bash
+        
+        self.update_terminal_view(f"$ {command}")
+        # 由于 bash tool 是同步的，这里直接调用
+        # 注意：这里我们直接复用 tools.py 中的 bash 函数逻辑
+        # 但 tools.bash 是被 @tool 装饰的，直接调用可能需要处理
+        # 简单起见，我们重新实现一个简单的 subprocess 调用或者直接调用 bash.invoke
+        
+        # 为了避免 import 问题和 tool 装饰器副作用，这里简单实现 subprocess 调用
+        # 或者更好的是直接调用 tools.bash 函数 (LangChain tool 对象也是 callable)
+        
+        try:
+            # bash is a StructuredTool, we can invoke it
+            output = bash.invoke({"command": command})
+        except Exception as e:
+            output = f"Error executing command: {e}"
+            
+        self.update_terminal_view(output)
 
     @work
     async def process_chat(self, value: str) -> None:

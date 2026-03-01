@@ -78,7 +78,11 @@ Code Deer 是一个基于终端的 AI 编程助手，结合了强大的大语言
 执行启动脚本即可运行 Code Deer：
 
 ```bash
+# 在当前目录启动
 ./start.sh
+
+# 在指定目录启动（所有文件操作将基于该目录）
+./start.sh /path/to/your/workspace
 ```
 
 ## 📂 项目结构
